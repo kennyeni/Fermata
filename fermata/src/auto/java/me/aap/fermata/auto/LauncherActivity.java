@@ -22,7 +22,6 @@ import android.content.pm.LauncherApps;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
-import android.os.Process;
 import android.os.UserHandle;
 import android.os.UserManager;
 import android.graphics.PorterDuff;
@@ -237,37 +236,23 @@ public class LauncherActivity extends AppCompatActivity {
 			var launcherApps = (LauncherApps) getContext().getSystemService(Context.LAUNCHER_APPS_SERVICE);
 			var userManager = (UserManager) getContext().getSystemService(Context.USER_SERVICE);
 			var allApps = new ArrayList<AppProfileInfo>();
-
-			if (launcherApps != null && userManager != null) {
-				var profiles = userManager.getUserProfiles();
-				for (var profile : profiles) {
-					try {
-						var activities = launcherApps.getActivityList(null, profile);
-						for (var activityInfo : activities) {
-							var intent = new Intent(Intent.ACTION_MAIN);
-							intent.addCategory(Intent.CATEGORY_LAUNCHER);
-							intent.setComponent(activityInfo.getComponentName());
-							var resolveInfos = pm.queryIntentActivities(intent, PackageManager.MATCH_ALL);
-							if (!resolveInfos.isEmpty()) {
-								allApps.add(new AppProfileInfo(resolveInfos.get(0), profile));
-							}
+			var profiles = userManager.getUserProfiles();
+			for (var profile : profiles) {
+				try {
+					var activities = launcherApps.getActivityList(null, profile);
+					for (var activityInfo : activities) {
+						var intent = new Intent(Intent.ACTION_MAIN);
+						intent.addCategory(Intent.CATEGORY_LAUNCHER);
+						intent.setComponent(activityInfo.getComponentName());
+						var resolveInfos = pm.queryIntentActivities(intent, PackageManager.MATCH_ALL);
+						if (!resolveInfos.isEmpty()) {
+							allApps.add(new AppProfileInfo(resolveInfos.get(0), profile));
 						}
-					} catch (Exception e) {
-						// Profile might not be accessible, skip it
 					}
+				} catch (Exception e) {
+					// Profile might not be accessible, skip it
 				}
 			}
-
-			// Fallback to main profile only if LauncherApps is not available
-			if (allApps.isEmpty()) {
-				var intent = new Intent(Intent.ACTION_MAIN);
-				intent.addCategory(Intent.CATEGORY_LAUNCHER);
-				var resolveInfos = pm.queryIntentActivities(intent, PackageManager.MATCH_ALL);
-				for (var info : resolveInfos) {
-					allApps.add(new AppProfileInfo(info, Process.myUserHandle()));
-				}
-			}
-
 			return allApps;
 		}
 
