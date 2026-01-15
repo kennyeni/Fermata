@@ -196,7 +196,7 @@ public class LauncherActivity extends AppCompatActivity {
 				var parts = app.split("#");
 				var pkg = parts.length > 0 ? parts[0] : "";
 				var activityName = parts.length > 1 ? parts[1] : "";
-				var userSerialNumber = parts.length > 2 ? Long.parseLong(parts[2]) : -1L;
+				var userSerialNumber = parts.length > 2 ? Long.parseLong(parts[2]);
 				for (var appProfileInfo : allApps) {
 					var info = appProfileInfo.info;
 					if (app.equals(addApp)) {
@@ -208,7 +208,7 @@ public class LauncherActivity extends AppCompatActivity {
 						apps.add(AppInfo.EXIT);
 						break;
 					}
-					long infoSerialNumber = userManager != null ? userManager.getSerialNumberForUser(appProfileInfo.userHandle) : -1L;
+					long infoSerialNumber = userManager.getSerialNumberForUser(appProfileInfo.userHandle);
 					if (pkg.equals(info.activityInfo.packageName) && activityName.equals(info.activityInfo.name) &&
 							(userSerialNumber == -1L || userSerialNumber == infoSerialNumber)) {
 						apps.add(new AppInfo(info.activityInfo.packageName, info.activityInfo.name,
@@ -280,7 +280,7 @@ public class LauncherActivity extends AppCompatActivity {
 			MainActivityPrefs.get().applyStringArrayPref(AA_LAUNCHER_APPS,
 					CollectionUtils.mapToArray(apps, i -> {
 						var result = i.pkg + '#' + i.name;
-						if (i.userHandle != null && userManager != null) {
+						if (i.userHandle != null) {
 							var serialNumber = userManager.getSerialNumberForUser(i.userHandle);
 							result += '#' + serialNumber;
 						}
@@ -478,28 +478,15 @@ public class LauncherActivity extends AppCompatActivity {
 				} else if (appInfo.equals(AppInfo.BACK)) {
 					selectApps();
 				} else {
-					try {
-						var launcherApps = (LauncherApps) getContext().getSystemService(Context.LAUNCHER_APPS_SERVICE);
-
-						// Use LauncherApps API if available and userHandle is set
-						if (launcherApps != null && appInfo.userHandle != null) {
-							var component = new ComponentName(appInfo.pkg, appInfo.name);
-							var extras = new Bundle();
-							extras.putInt(INTENT_EXTRA_MODE, FermataApplication.get().getMirroringMode());
-							launcherApps.startMainActivity(component, appInfo.userHandle, null, extras);
-						} else {
-							// Fallback to traditional method for main profile
-							var intent = new Intent(Intent.ACTION_MAIN);
-							intent.addCategory(Intent.CATEGORY_LAUNCHER);
-							intent.setClassName(appInfo.pkg, appInfo.name);
-							intent.setFlags(FLAG_ACTIVITY_NEW_TASK);
-							intent.putExtra(INTENT_EXTRA_MODE, FermataApplication.get().getMirroringMode());
-							getContext().startActivity(intent);
-						}
-						MirrorDisplay.disableAccelRotation();
-					} catch (Exception err) {
-						Toast.makeText(getContext(), err.getLocalizedMessage(), Toast.LENGTH_LONG).show();
-					}
+				try {
+					var launcherApps = (LauncherApps) getContext().getSystemService(Context.LAUNCHER_APPS_SERVICE);
+					var extras = new Bundle();
+					extras.putInt(INTENT_EXTRA_MODE, FermataApplication.get().getMirroringMode());
+					launcherApps.startMainActivity(new ComponentName(appInfo.pkg, appInfo.name), appInfo.userHandle, null, extras);
+					MirrorDisplay.disableAccelRotation();
+				} catch (Exception err) {
+					Toast.makeText(getContext(), err.getLocalizedMessage(), Toast.LENGTH_LONG).show();
+				}
 				}
 			}
 		}
