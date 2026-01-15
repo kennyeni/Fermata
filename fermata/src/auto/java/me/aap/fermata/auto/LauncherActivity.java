@@ -499,7 +499,7 @@ public class LauncherActivity extends AppCompatActivity {
 						// Use LauncherApps API if available and userHandle is set
 						if (launcherApps != null && appInfo.userHandle != null) {
 							var component = new ComponentName(appInfo.pkg, appInfo.name);
-							var extras = new android.os.Bundle();
+							var extras = new Bundle();
 							extras.putInt(INTENT_EXTRA_MODE, FermataApplication.get().getMirroringMode());
 							launcherApps.startMainActivity(component, appInfo.userHandle, null, extras);
 						} else {
