@@ -15,11 +15,16 @@ import static me.aap.utils.ui.UiUtils.toPx;
 import static me.aap.utils.ui.activity.ActivityDelegate.FULLSCREEN_FLAGS;
 
 import android.annotation.SuppressLint;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.LauncherApps;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
+import android.os.Process;
+import android.os.UserHandle;
+import android.os.UserManager;
 import android.graphics.PorterDuff;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
@@ -183,27 +188,49 @@ public class LauncherActivity extends AppCompatActivity {
 			var selectedApps = MainActivityPrefs.get().getStringArrayPref(AA_LAUNCHER_APPS);
 			var apps = new ArrayList<AppInfo>(selectedApps.length + 1);
 			var pm = getContext().getPackageManager();
+			var userManager = (UserManager) getContext().getSystemService(Context.USER_SERVICE);
 			var allApps = loadAllAppList(pm);
 			var addApp = AppInfo.ADD.pkg + '#' + AppInfo.ADD.name;
 			var exitApp = AppInfo.EXIT.pkg + '#' + AppInfo.EXIT.name;
 
 			for (var app : selectedApps) {
-				for (var info : allApps) {
-					var pkg = info.activityInfo.packageName;
-					if (app.equals(addApp)) {
-						apps.add(AppInfo.ADD);
-						addApp = null;
-						break;
+				// Parse stored format: "package#activity" or "package#activity#userSerialNumber"
+				var parts = app.split("#");
+				var pkg = parts.length > 0 ? parts[0] : "";
+				var activityName = parts.length > 1 ? parts[1] : "";
+				var userSerialNumber = parts.length > 2 ? Long.parseLong(parts[2]) : -1L;
+
+				if (app.equals(addApp) || (pkg.equals(AppInfo.ADD.pkg) && activityName.equals(AppInfo.ADD.name))) {
+					apps.add(AppInfo.ADD);
+					addApp = null;
+					continue;
+				}
+				if (app.equals(exitApp) || (pkg.equals(AppInfo.EXIT.pkg) && activityName.equals(AppInfo.EXIT.name))) {
+					apps.add(AppInfo.EXIT);
+					continue;
+				}
+
+				for (var appProfileInfo : allApps) {
+					var info = appProfileInfo.info;
+					var infoPkg = info.activityInfo.packageName;
+					var infoActivity = info.activityInfo.name;
+					var infoUserHandle = appProfileInfo.userHandle;
+
+					// Get user serial number for comparison
+					long infoSerialNumber = -1L;
+					if (userManager != null) {
+						infoSerialNumber = userManager.getSerialNumberForUser(infoUserHandle);
 					}
-					if (app.equals(exitApp)) {
-						apps.add(AppInfo.EXIT);
-						break;
+
+					// Match by package, activity, and user profile
+					boolean matches = pkg.equals(infoPkg) && activityName.equals(infoActivity);
+					if (userSerialNumber != -1L) {
+						matches = matches && (userSerialNumber == infoSerialNumber);
 					}
-					if (app.startsWith(pkg) && (app.equals(pkg) ||
-							(app.endsWith(info.activityInfo.name) && (app.charAt(pkg.length()) == '#') &&
-									(app.length() == (pkg.length() + info.activityInfo.name.length() + 1))))) {
+
+					if (matches) {
 						apps.add(new AppInfo(info.activityInfo.packageName, info.activityInfo.name,
-								info.loadLabel(pm).toString(), info.loadIcon(pm)));
+								info.loadLabel(pm).toString(), info.loadIcon(pm), infoUserHandle));
 						break;
 					}
 				}
@@ -213,10 +240,52 @@ public class LauncherActivity extends AppCompatActivity {
 			return apps;
 		}
 
-		private List<ResolveInfo> loadAllAppList(PackageManager pm) {
-			var intent = new Intent(Intent.ACTION_MAIN);
-			intent.addCategory(Intent.CATEGORY_LAUNCHER);
-			return pm.queryIntentActivities(intent, PackageManager.MATCH_ALL);
+		private static class AppProfileInfo {
+			final ResolveInfo info;
+			final UserHandle userHandle;
+
+			AppProfileInfo(ResolveInfo info, UserHandle userHandle) {
+				this.info = info;
+				this.userHandle = userHandle;
+			}
+		}
+
+		private List<AppProfileInfo> loadAllAppList(PackageManager pm) {
+			var launcherApps = (LauncherApps) getContext().getSystemService(Context.LAUNCHER_APPS_SERVICE);
+			var userManager = (UserManager) getContext().getSystemService(Context.USER_SERVICE);
+			var allApps = new ArrayList<AppProfileInfo>();
+
+			if (launcherApps != null && userManager != null) {
+				var profiles = userManager.getUserProfiles();
+				for (var profile : profiles) {
+					try {
+						var activities = launcherApps.getActivityList(null, profile);
+						for (var activityInfo : activities) {
+							var intent = new Intent(Intent.ACTION_MAIN);
+							intent.addCategory(Intent.CATEGORY_LAUNCHER);
+							intent.setComponent(activityInfo.getComponentName());
+							var resolveInfos = pm.queryIntentActivities(intent, PackageManager.MATCH_ALL);
+							if (!resolveInfos.isEmpty()) {
+								allApps.add(new AppProfileInfo(resolveInfos.get(0), profile));
+							}
+						}
+					} catch (Exception e) {
+						// Profile might not be accessible, skip it
+					}
+				}
+			}
+
+			// Fallback to main profile only if LauncherApps is not available
+			if (allApps.isEmpty()) {
+				var intent = new Intent(Intent.ACTION_MAIN);
+				intent.addCategory(Intent.CATEGORY_LAUNCHER);
+				var resolveInfos = pm.queryIntentActivities(intent, PackageManager.MATCH_ALL);
+				for (var info : resolveInfos) {
+					allApps.add(new AppProfileInfo(info, Process.myUserHandle()));
+				}
+			}
+
+			return allApps;
 		}
 
 		@SuppressLint("NotifyDataSetChanged")
@@ -226,7 +295,7 @@ public class LauncherActivity extends AppCompatActivity {
 					if (!apps.contains(app)) {
 						var idx = apps.size();
 						if (apps.get(idx - 1).equals(AppInfo.ADD)) idx -= 1;
-						var ai = new AppInfo(app.pkg, app.name, app.label, app.icon());
+						var ai = new AppInfo(app.pkg, app.name, app.label, app.icon(), app.userHandle);
 						apps.add(idx, AppInfo.EXIT.equals(ai) ? AppInfo.EXIT : ai);
 					}
 				} else {
@@ -239,8 +308,16 @@ public class LauncherActivity extends AppCompatActivity {
 		}
 
 		private void saveApps() {
+			var userManager = (UserManager) getContext().getSystemService(Context.USER_SERVICE);
 			MainActivityPrefs.get().applyStringArrayPref(AA_LAUNCHER_APPS,
-					CollectionUtils.mapToArray(apps, i -> i.pkg + '#' + i.name, String[]::new));
+					CollectionUtils.mapToArray(apps, i -> {
+						var result = i.pkg + '#' + i.name;
+						if (i.userHandle != null && userManager != null) {
+							var serialNumber = userManager.getSerialNumberForUser(i.userHandle);
+							result += '#' + serialNumber;
+						}
+						return result;
+					}, String[]::new));
 		}
 
 		private void configure(Context ctx, Configuration cfg) {
@@ -257,21 +334,23 @@ public class LauncherActivity extends AppCompatActivity {
 
 		private static class AppInfo {
 			private static final AppInfo ADD =
-					new AppInfo(FermataApplication.get().getPackageName(), "add", null, null);
+					new AppInfo(FermataApplication.get().getPackageName(), "add", null, null, null);
 			private static final AppInfo BACK =
-					new AppInfo(FermataApplication.get().getPackageName(), "back", null, null);
+					new AppInfo(FermataApplication.get().getPackageName(), "back", null, null, null);
 			private static final AppInfo EXIT =
-					new AppInfo(FermataApplication.get().getPackageName(), "exit", null, null);
+					new AppInfo(FermataApplication.get().getPackageName(), "exit", null, null, null);
 			final String pkg;
 			final String name;
 			final String label;
+			final UserHandle userHandle;
 			protected Drawable icon;
 
-			private AppInfo(String pkg, String name, String label, Drawable icon) {
+			private AppInfo(String pkg, String name, String label, Drawable icon, UserHandle userHandle) {
 				this.pkg = pkg;
 				this.name = name;
 				this.label = label;
 				this.icon = icon;
+				this.userHandle = userHandle;
 			}
 
 			/**
@@ -281,12 +360,13 @@ public class LauncherActivity extends AppCompatActivity {
 			public boolean equals(Object o) {
 				if (this == o) return true;
 				AppInfo appInfo = (AppInfo) o;
-				return Objects.equals(pkg, appInfo.pkg) && Objects.equals(name, appInfo.name);
+				return Objects.equals(pkg, appInfo.pkg) && Objects.equals(name, appInfo.name) &&
+						Objects.equals(userHandle, appInfo.userHandle);
 			}
 
 			@Override
 			public int hashCode() {
-				return Objects.hash(pkg, name);
+				return Objects.hash(pkg, name, userHandle);
 			}
 
 			public Drawable icon() {return icon;}
@@ -297,14 +377,14 @@ public class LauncherActivity extends AppCompatActivity {
 			private final ResolveInfo info;
 			boolean selected;
 
-			private SelectAppInfo(PackageManager pm, ResolveInfo info) {
+			private SelectAppInfo(PackageManager pm, ResolveInfo info, UserHandle userHandle) {
 				this(pm, info, info.activityInfo.packageName, info.activityInfo.name,
-						info.loadLabel(pm).toString(), null);
+						info.loadLabel(pm).toString(), null, userHandle);
 			}
 
 			private SelectAppInfo(PackageManager pm, ResolveInfo info, String pkg, String name,
-														String label, Drawable icon) {
-				super(pkg, name, label, icon);
+														String label, Drawable icon, UserHandle userHandle) {
+				super(pkg, name, label, icon, userHandle);
 				this.pm = pm;
 				this.info = info;
 			}
@@ -419,9 +499,10 @@ public class LauncherActivity extends AppCompatActivity {
 					if (exitIcon == null) exitIcon = loadIcon(R.drawable.shutdown);
 					selectApps = new SelectAppInfo[allApps.size() + 1];
 					selectApps[0] = new SelectAppInfo(null, null, AppInfo.EXIT.pkg, AppInfo.EXIT.name,
-							getContext().getString(R.string.exit), exitIcon);
+							getContext().getString(R.string.exit), exitIcon, null);
 					for (int i = 1; i < selectApps.length; i++) {
-						selectApps[i] = new SelectAppInfo(pm, allApps.get(i - 1));
+						var appProfileInfo = allApps.get(i - 1);
+						selectApps[i] = new SelectAppInfo(pm, appProfileInfo.info, appProfileInfo.userHandle);
 					}
 					Arrays.sort(selectApps, 1, selectApps.length);
 					for (var app : selectApps) app.selected = AppListView.this.apps.contains(app);
@@ -430,12 +511,23 @@ public class LauncherActivity extends AppCompatActivity {
 					selectApps();
 				} else {
 					try {
-						var intent = new Intent(Intent.ACTION_MAIN);
-						intent.addCategory(Intent.CATEGORY_LAUNCHER);
-						intent.setClassName(appInfo.pkg, appInfo.name);
-						intent.setFlags(FLAG_ACTIVITY_NEW_TASK);
-						intent.putExtra(INTENT_EXTRA_MODE, FermataApplication.get().getMirroringMode());
-						getContext().startActivity(intent);
+						var launcherApps = (LauncherApps) getContext().getSystemService(Context.LAUNCHER_APPS_SERVICE);
+
+						// Use LauncherApps API if available and userHandle is set
+						if (launcherApps != null && appInfo.userHandle != null) {
+							var component = new ComponentName(appInfo.pkg, appInfo.name);
+							var extras = new android.os.Bundle();
+							extras.putInt(INTENT_EXTRA_MODE, FermataApplication.get().getMirroringMode());
+							launcherApps.startMainActivity(component, appInfo.userHandle, null, extras);
+						} else {
+							// Fallback to traditional method for main profile
+							var intent = new Intent(Intent.ACTION_MAIN);
+							intent.addCategory(Intent.CATEGORY_LAUNCHER);
+							intent.setClassName(appInfo.pkg, appInfo.name);
+							intent.setFlags(FLAG_ACTIVITY_NEW_TASK);
+							intent.putExtra(INTENT_EXTRA_MODE, FermataApplication.get().getMirroringMode());
+							getContext().startActivity(intent);
+						}
 						MirrorDisplay.disableAccelRotation();
 					} catch (Exception err) {
 						Toast.makeText(getContext(), err.getLocalizedMessage(), Toast.LENGTH_LONG).show();
