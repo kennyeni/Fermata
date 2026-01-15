@@ -194,43 +194,26 @@ public class LauncherActivity extends AppCompatActivity {
 			var exitApp = AppInfo.EXIT.pkg + '#' + AppInfo.EXIT.name;
 
 			for (var app : selectedApps) {
-				// Parse stored format: "package#activity" or "package#activity#userSerialNumber"
 				var parts = app.split("#");
 				var pkg = parts.length > 0 ? parts[0] : "";
 				var activityName = parts.length > 1 ? parts[1] : "";
 				var userSerialNumber = parts.length > 2 ? Long.parseLong(parts[2]) : -1L;
-
-				if (app.equals(addApp) || (pkg.equals(AppInfo.ADD.pkg) && activityName.equals(AppInfo.ADD.name))) {
-					apps.add(AppInfo.ADD);
-					addApp = null;
-					continue;
-				}
-				if (app.equals(exitApp) || (pkg.equals(AppInfo.EXIT.pkg) && activityName.equals(AppInfo.EXIT.name))) {
-					apps.add(AppInfo.EXIT);
-					continue;
-				}
-
 				for (var appProfileInfo : allApps) {
 					var info = appProfileInfo.info;
-					var infoPkg = info.activityInfo.packageName;
-					var infoActivity = info.activityInfo.name;
-					var infoUserHandle = appProfileInfo.userHandle;
-
-					// Get user serial number for comparison
-					long infoSerialNumber = -1L;
-					if (userManager != null) {
-						infoSerialNumber = userManager.getSerialNumberForUser(infoUserHandle);
+					if (app.equals(addApp)) {
+						apps.add(AppInfo.ADD);
+						addApp = null;
+						break;
 					}
-
-					// Match by package, activity, and user profile
-					boolean matches = pkg.equals(infoPkg) && activityName.equals(infoActivity);
-					if (userSerialNumber != -1L) {
-						matches = matches && (userSerialNumber == infoSerialNumber);
+					if (app.equals(exitApp)) {
+						apps.add(AppInfo.EXIT);
+						break;
 					}
-
-					if (matches) {
+					long infoSerialNumber = userManager != null ? userManager.getSerialNumberForUser(appProfileInfo.userHandle) : -1L;
+					if (pkg.equals(info.activityInfo.packageName) && activityName.equals(info.activityInfo.name) &&
+							(userSerialNumber == -1L || userSerialNumber == infoSerialNumber)) {
 						apps.add(new AppInfo(info.activityInfo.packageName, info.activityInfo.name,
-								info.loadLabel(pm).toString(), info.loadIcon(pm), infoUserHandle));
+								info.loadLabel(pm).toString(), info.loadIcon(pm), appProfileInfo.userHandle));
 						break;
 					}
 				}
