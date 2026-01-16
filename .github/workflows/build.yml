@@ -1,5 +1,10 @@
 name: Android CI
-# Test cache effectiveness
+
+# Cache scoping note: GitHub Actions caches are branch-scoped. Feature branches can only
+# access caches from the same branch or the default branch (master). To enable cache
+# sharing, ensure the master branch workflow runs first to create base caches that
+# feature branches can restore from. Using separate restore/save steps ensures caches
+# are saved even if the build fails.
 
 on:
   push:
@@ -17,8 +22,9 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Cache Gradle dependencies
-      uses: actions/cache@v4
+    - name: Restore Gradle cache
+      id: gradle-cache-restore
+      uses: actions/cache/restore@v4
       with:
         path: |
           ~/.gradle/caches
@@ -28,8 +34,9 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-gradle-
 
-    - name: Cache Android build outputs
-      uses: actions/cache@v4
+    - name: Restore build cache
+      id: build-cache-restore
+      uses: actions/cache/restore@v4
       with:
         path: |
           .cxx
@@ -64,3 +71,22 @@ jobs:
         name: debug-apk
         path: fermata/build/outputs/apk/auto/debug/*.apk
         retention-days: 7
+
+    - name: Save Gradle cache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+          .gradle
+        key: ${{ steps.gradle-cache-restore.outputs.cache-primary-key }}
+
+    - name: Save build cache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          .cxx
+          **/build
+        key: ${{ steps.build-cache-restore.outputs.cache-primary-key }}
