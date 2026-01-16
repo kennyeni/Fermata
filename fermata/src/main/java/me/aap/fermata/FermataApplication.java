@@ -69,13 +69,19 @@ public class FermataApplication extends NetSplitCompatApp {
 
 	private void testFileWrite() {
 		try {
-			File testDir = new File(getExternalFilesDir(null), "CrashLogs");
+			// Use internal storage - always available, no permissions needed
+			File testDir = new File(getFilesDir(), "CrashLogs");
 			testDir.mkdirs();
 			File testFile = new File(testDir, "startup_test.txt");
 			FileOutputStream fos = new FileOutputStream(testFile);
 			PrintWriter pw = new PrintWriter(fos);
+			pw.println("=== Fermata Startup Test ===");
 			pw.println("App started successfully at: " + new Date());
 			pw.println("Path: " + testFile.getAbsolutePath());
+			pw.println("Package: " + getPackageName());
+			pw.println("Internal files dir: " + getFilesDir().getAbsolutePath());
+			pw.println("External files dir: " + (getExternalFilesDir(null) != null ? getExternalFilesDir(null).getAbsolutePath() : "NULL"));
+			pw.println("Cache dir: " + getCacheDir().getAbsolutePath());
 			pw.close();
 			fos.close();
 			Log.i("Test file written to: " + testFile.getAbsolutePath());
@@ -89,16 +95,17 @@ public class FermataApplication extends NetSplitCompatApp {
 		Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
 			String crashInfo = null;
 			try {
-				// Try multiple locations
+				// Try multiple locations - prioritize internal storage (always available)
 				File[] logDirs = new File[]{
-					new File(getExternalFilesDir(null), "CrashLogs"),
 					new File(getFilesDir(), "CrashLogs"),
-					getCacheDir()
+					getCacheDir(),
+					getExternalFilesDir(null) != null ? new File(getExternalFilesDir(null), "CrashLogs") : null
 				};
 
 				String timestamp = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(new Date());
 
 				for (File logDir : logDirs) {
+					if (logDir == null) continue;
 					try {
 						if (!logDir.exists()) logDir.mkdirs();
 
