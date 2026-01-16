@@ -490,15 +490,24 @@ public class LauncherActivity extends AppCompatActivity {
 				} else if (appInfo.equals(AppInfo.BACK)) {
 					selectApps();
 				} else {
-				try {
-					var launcherApps = (LauncherApps) getContext().getSystemService(Context.LAUNCHER_APPS_SERVICE);
-					var extras = new Bundle();
-					extras.putInt(INTENT_EXTRA_MODE, FermataApplication.get().getMirroringMode());
-					launcherApps.startMainActivity(new ComponentName(appInfo.pkg, appInfo.name), appInfo.userHandle, null, extras);
-					MirrorDisplay.disableAccelRotation();
-				} catch (Exception err) {
-					Toast.makeText(getContext(), err.getLocalizedMessage(), Toast.LENGTH_LONG).show();
-				}
+					try {
+						var launcherApps = (LauncherApps) getContext().getSystemService(Context.LAUNCHER_APPS_SERVICE);
+						if (launcherApps != null && appInfo.userHandle != null) {
+							var extras = new Bundle();
+							extras.putInt(INTENT_EXTRA_MODE, FermataApplication.get().getMirroringMode());
+							launcherApps.startMainActivity(new ComponentName(appInfo.pkg, appInfo.name), appInfo.userHandle, null, extras);
+						} else {
+							var intent = new Intent(Intent.ACTION_MAIN);
+							intent.addCategory(Intent.CATEGORY_LAUNCHER);
+							intent.setClassName(appInfo.pkg, appInfo.name);
+							intent.setFlags(FLAG_ACTIVITY_NEW_TASK);
+							intent.putExtra(INTENT_EXTRA_MODE, FermataApplication.get().getMirroringMode());
+							getContext().startActivity(intent);
+						}
+						MirrorDisplay.disableAccelRotation();
+					} catch (Exception err) {
+						Toast.makeText(getContext(), err.getLocalizedMessage(), Toast.LENGTH_LONG).show();
+					}
 				}
 			}
 		}
