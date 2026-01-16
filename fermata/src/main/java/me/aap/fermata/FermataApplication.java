@@ -45,11 +45,26 @@ public class FermataApplication extends NetSplitCompatApp {
 
 	@Override
 	public void onCreate() {
-		super.onCreate();
-		setupCrashLogger();
-		testFileWrite(); // Verify file writing works
-		vfsManager = new FermataVfsManager();
-		bitmapCache = new BitmapCache();
+		try {
+			super.onCreate();
+			setupCrashLogger();
+			testFileWrite(); // Verify file writing works
+			vfsManager = new FermataVfsManager();
+			bitmapCache = new BitmapCache();
+		} catch (Exception e) {
+			// Last resort - try to write crash to simplest possible location
+			try {
+				File crashFile = new File(getCacheDir(), "onCreate_crash.txt");
+				FileOutputStream fos = new FileOutputStream(crashFile);
+				PrintWriter pw = new PrintWriter(fos);
+				pw.println("FermataApplication.onCreate() crashed:");
+				e.printStackTrace(pw);
+				pw.close();
+				fos.close();
+			} catch (Exception ignored) {
+			}
+			throw new RuntimeException("Failed to initialize FermataApplication", e);
+		}
 	}
 
 	private void testFileWrite() {
