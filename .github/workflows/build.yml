@@ -7,8 +7,6 @@ name: Android CI
 # are saved even if the build fails.
 
 on:
-  push:
-    branches: [ "**" ]
   pull_request:
     branches: [ "**" ]
 
