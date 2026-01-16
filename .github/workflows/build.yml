@@ -1,0 +1,90 @@
+name: Android CI
+
+# Cache scoping note: GitHub Actions caches are branch-scoped. Feature branches can only
+# access caches from the same branch or the default branch (master). To enable cache
+# sharing, ensure the master branch workflow runs first to create base caches that
+# feature branches can restore from. Using separate restore/save steps ensures caches
+# are saved even if the build fails.
+
+on:
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Restore Gradle cache
+      id: gradle-cache-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+          .gradle
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+
+    - name: Restore build cache
+      id: build-cache-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          .cxx
+          **/build
+        key: ${{ runner.os }}-build-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-build-
+
+    - name: Build in Docker container
+      run: |
+        docker run --rm \
+          --user root \
+          --entrypoint bash \
+          -v "$PWD:/workspace" \
+          -v "$HOME/.gradle:/root/.gradle" \
+          -w /workspace \
+          -e NO_GS=true \
+          -e GRADLE_OPTS="-Xmx4g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError" \
+          andreypavlenko/fermata:latest \
+          -c "apt-get update && apt-get install -y ninja-build && \
+              printf 'storeFile=/workspace/res/fermata.jks\nkeyAlias=fermata\nkeyPassword=fermata\nstorePassword=fermata\n' > local.properties && \
+              chmod +x gradlew && ./gradlew assembleDebug --build-cache"
+
+    - name: Fix cache permissions
+      run: |
+        sudo chown -R $USER:$USER $HOME/.gradle || true
+        sudo chown -R $USER:$USER .gradle .cxx */build || true
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-apk
+        path: fermata/build/outputs/apk/auto/debug/*.apk
+        retention-days: 7
+
+    - name: Save Gradle cache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+          .gradle
+        key: ${{ steps.gradle-cache-restore.outputs.cache-primary-key }}
+
+    - name: Save build cache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          .cxx
+          **/build
+        key: ${{ steps.build-cache-restore.outputs.cache-primary-key }}
