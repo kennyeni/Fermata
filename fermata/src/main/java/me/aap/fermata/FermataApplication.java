@@ -45,25 +45,49 @@ public class FermataApplication extends NetSplitCompatApp {
 
 	@Override
 	public void onCreate() {
+		// Set up crash logger FIRST, before anything else
+		setupCrashLogger();
+
 		try {
 			super.onCreate();
-			setupCrashLogger();
 			testFileWrite(); // Verify file writing works
 			vfsManager = new FermataVfsManager();
 			bitmapCache = new BitmapCache();
 		} catch (Exception e) {
-			// Last resort - try to write crash to simplest possible location
+			// Last resort - try to write crash to multiple locations
+			writeCrashLog("onCreate_crash.txt", "FermataApplication.onCreate() crashed", e);
+			throw new RuntimeException("Failed to initialize FermataApplication", e);
+		}
+	}
+
+	private void writeCrashLog(String filename, String message, Exception e) {
+		// Try multiple locations without depending on context
+		String[] paths = new String[] {
+			"/sdcard/FermataCrash/" + filename,
+			"/sdcard/Download/FermataCrash/" + filename,
+			"/data/local/tmp/" + filename
+		};
+
+		for (String path : paths) {
 			try {
-				File crashFile = new File(getCacheDir(), "onCreate_crash.txt");
-				FileOutputStream fos = new FileOutputStream(crashFile);
+				File file = new File(path);
+				file.getParentFile().mkdirs();
+				FileOutputStream fos = new FileOutputStream(file);
 				PrintWriter pw = new PrintWriter(fos);
-				pw.println("FermataApplication.onCreate() crashed:");
-				e.printStackTrace(pw);
+				pw.println("=== Fermata Crash ===");
+				pw.println(message);
+				pw.println("Time: " + new Date());
+				pw.println("Path: " + path);
+				if (e != null) {
+					pw.println("\nStack trace:");
+					e.printStackTrace(pw);
+				}
 				pw.close();
 				fos.close();
+				return; // Success, exit
 			} catch (Exception ignored) {
+				// Try next location
 			}
-			throw new RuntimeException("Failed to initialize FermataApplication", e);
 		}
 	}
 
