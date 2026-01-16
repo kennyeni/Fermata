@@ -11,6 +11,12 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.media.engine.BitmapCache;
@@ -40,8 +46,86 @@ public class FermataApplication extends NetSplitCompatApp {
 	@Override
 	public void onCreate() {
 		super.onCreate();
+		setupCrashLogger();
+		testFileWrite(); // Verify file writing works
 		vfsManager = new FermataVfsManager();
 		bitmapCache = new BitmapCache();
+	}
+
+	private void testFileWrite() {
+		try {
+			File testDir = new File(getExternalFilesDir(null), "CrashLogs");
+			testDir.mkdirs();
+			File testFile = new File(testDir, "startup_test.txt");
+			FileOutputStream fos = new FileOutputStream(testFile);
+			PrintWriter pw = new PrintWriter(fos);
+			pw.println("App started successfully at: " + new Date());
+			pw.println("Path: " + testFile.getAbsolutePath());
+			pw.close();
+			fos.close();
+			Log.i("Test file written to: " + testFile.getAbsolutePath());
+		} catch (Exception e) {
+			Log.e(e, "Failed to write test file");
+		}
+	}
+
+	private void setupCrashLogger() {
+		final Thread.UncaughtExceptionHandler defaultHandler = Thread.getDefaultUncaughtExceptionHandler();
+		Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+			String crashInfo = null;
+			try {
+				// Try multiple locations
+				File[] logDirs = new File[]{
+					new File(getExternalFilesDir(null), "CrashLogs"),
+					new File(getFilesDir(), "CrashLogs"),
+					getCacheDir()
+				};
+
+				String timestamp = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(new Date());
+
+				for (File logDir : logDirs) {
+					try {
+						if (!logDir.exists()) logDir.mkdirs();
+
+						File logFile = new File(logDir, "crash_" + timestamp + ".txt");
+						FileOutputStream fos = new FileOutputStream(logFile);
+						PrintWriter pw = new PrintWriter(fos);
+
+						pw.println("=== Fermata Crash Log ===");
+						pw.println("Time: " + timestamp);
+						pw.println("Thread: " + thread.getName());
+						pw.println("Build: " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")");
+						pw.println("Log location: " + logFile.getAbsolutePath());
+						pw.println("\n--- Stack Trace ---\n");
+
+						StringWriter sw = new StringWriter();
+						throwable.printStackTrace(new PrintWriter(sw));
+						crashInfo = sw.toString();
+						pw.println(crashInfo);
+
+						pw.flush();
+						pw.close();
+						fos.close();
+
+						Log.i("Crash log saved to: " + logFile.getAbsolutePath());
+						break; // Success, no need to try other locations
+					} catch (Exception ignored) {
+						// Try next location
+					}
+				}
+			} catch (Exception e) {
+				Log.e(e, "Failed to write crash log");
+			}
+
+			// Always log to logcat
+			if (crashInfo != null) {
+				Log.e("CRASH: " + crashInfo);
+			}
+
+			if (defaultHandler != null) {
+				defaultHandler.uncaughtException(thread, throwable);
+			}
+		});
 	}
 
 	public boolean isConnectedToAuto() {

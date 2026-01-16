@@ -233,25 +233,36 @@ public class LauncherActivity extends AppCompatActivity {
 		}
 
 		private List<AppProfileInfo> loadAllAppList(PackageManager pm) {
-			var launcherApps = (LauncherApps) getContext().getSystemService(Context.LAUNCHER_APPS_SERVICE);
-			var userManager = (UserManager) getContext().getSystemService(Context.USER_SERVICE);
 			var allApps = new ArrayList<AppProfileInfo>();
-			var profiles = userManager.getUserProfiles();
-			for (var profile : profiles) {
-				try {
-					var activities = launcherApps.getActivityList(null, profile);
-					for (var activityInfo : activities) {
-						var intent = new Intent(Intent.ACTION_MAIN);
-						intent.addCategory(Intent.CATEGORY_LAUNCHER);
-						intent.setComponent(activityInfo.getComponentName());
-						var resolveInfos = pm.queryIntentActivities(intent, PackageManager.MATCH_ALL);
-						if (!resolveInfos.isEmpty()) {
-							allApps.add(new AppProfileInfo(resolveInfos.get(0), profile));
-						}
-					}
-				} catch (Exception e) {
-					// Profile might not be accessible, skip it
+			try {
+				var launcherApps = (LauncherApps) getContext().getSystemService(Context.LAUNCHER_APPS_SERVICE);
+				var userManager = (UserManager) getContext().getSystemService(Context.USER_SERVICE);
+
+				if (launcherApps == null || userManager == null) {
+					Toast.makeText(getContext(), "LauncherApps/UserManager unavailable", Toast.LENGTH_LONG).show();
+					return allApps;
 				}
+
+				var profiles = userManager.getUserProfiles();
+				for (var profile : profiles) {
+					try {
+						var activities = launcherApps.getActivityList(null, profile);
+						for (var activityInfo : activities) {
+							var intent = new Intent(Intent.ACTION_MAIN);
+							intent.addCategory(Intent.CATEGORY_LAUNCHER);
+							intent.setComponent(activityInfo.getComponentName());
+							var resolveInfos = pm.queryIntentActivities(intent, PackageManager.MATCH_ALL);
+							if (!resolveInfos.isEmpty()) {
+								allApps.add(new AppProfileInfo(resolveInfos.get(0), profile));
+							}
+						}
+					} catch (Exception e) {
+						Toast.makeText(getContext(), "Error loading profile: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+					}
+				}
+			} catch (Exception e) {
+				Toast.makeText(getContext(), "CRITICAL: loadAllAppList failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+				e.printStackTrace();
 			}
 			return allApps;
 		}
