@@ -196,7 +196,7 @@ public class LauncherActivity extends AppCompatActivity {
 				var parts = app.split("#");
 				var pkg = parts.length > 0 ? parts[0] : "";
 				var activityName = parts.length > 1 ? parts[1] : "";
-				var userSerialNumber = parts.length > 2 ? Long.parseLong(parts[2]);
+				var userSerialNumber = parts.length > 2 ? Long.parseLong(parts[2]) : -1L;
 				for (var appProfileInfo : allApps) {
 					var info = appProfileInfo.info;
 					if (app.equals(addApp)) {
