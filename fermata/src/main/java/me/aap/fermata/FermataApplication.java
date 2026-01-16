@@ -45,22 +45,34 @@ public class FermataApplication extends NetSplitCompatApp {
 
 	@Override
 	public void onCreate() {
+		android.util.Log.i("FermataCrash", ">>> FermataApplication.onCreate() starting");
+
 		// Set up crash logger FIRST, before anything else
+		android.util.Log.i("FermataCrash", ">>> Setting up crash logger");
 		setupCrashLogger();
+		android.util.Log.i("FermataCrash", ">>> Crash logger setup complete");
 
 		try {
+			android.util.Log.i("FermataCrash", ">>> Calling super.onCreate()");
 			super.onCreate();
+			android.util.Log.i("FermataCrash", ">>> super.onCreate() completed");
+
+			android.util.Log.i("FermataCrash", ">>> Writing test file");
 			testFileWrite(); // Verify file writing works
+			android.util.Log.i("FermataCrash", ">>> Test file written");
+
 			vfsManager = new FermataVfsManager();
 			bitmapCache = new BitmapCache();
-		} catch (Exception e) {
+			android.util.Log.i("FermataCrash", ">>> FermataApplication.onCreate() completed successfully");
+		} catch (Throwable e) {  // Catch ALL throwables, not just Exceptions
 			// Last resort - try to write crash to multiple locations
+			android.util.Log.e("FermataCrash", "=== FermataApplication.onCreate() CRASHED ===", e);
 			writeCrashLog("onCreate_crash.txt", "FermataApplication.onCreate() crashed", e);
 			throw new RuntimeException("Failed to initialize FermataApplication", e);
 		}
 	}
 
-	private void writeCrashLog(String filename, String message, Exception e) {
+	private void writeCrashLog(String filename, String message, Throwable e) {
 		// Log to logcat first (always works)
 		android.util.Log.e("FermataCrash", "=== " + message + " ===");
 		if (e != null) {
