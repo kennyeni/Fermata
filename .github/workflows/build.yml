@@ -45,6 +45,19 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-build-
 
+    - name: Clean up ghost module directories from cache
+      run: |
+        # Remove build directories for modules that don't exist in this commit
+        if [ -d modules ]; then
+          for dir in modules/*/; do
+            module=$(basename "$dir")
+            if [ ! -f "modules/$module/build.gradle" ] && [ -d "modules/$module/build" ]; then
+              echo "Removing ghost module: modules/$module"
+              rm -rf "modules/$module"
+            fi
+          done
+        fi
+
     - name: Build in Docker container
       run: |
         docker run --rm \
