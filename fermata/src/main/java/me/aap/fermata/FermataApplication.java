@@ -11,6 +11,12 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.media.engine.BitmapCache;
@@ -39,9 +45,144 @@ public class FermataApplication extends NetSplitCompatApp {
 
 	@Override
 	public void onCreate() {
-		super.onCreate();
-		vfsManager = new FermataVfsManager();
-		bitmapCache = new BitmapCache();
+		android.util.Log.i("FermataCrash", ">>> FermataApplication.onCreate() starting");
+
+		// Set up crash logger FIRST, before anything else
+		android.util.Log.i("FermataCrash", ">>> Setting up crash logger");
+		setupCrashLogger();
+		android.util.Log.i("FermataCrash", ">>> Crash logger setup complete");
+
+		try {
+			android.util.Log.i("FermataCrash", ">>> Calling super.onCreate()");
+			super.onCreate();
+			android.util.Log.i("FermataCrash", ">>> super.onCreate() completed");
+
+			android.util.Log.i("FermataCrash", ">>> Writing test file");
+			testFileWrite(); // Verify file writing works
+			android.util.Log.i("FermataCrash", ">>> Test file written");
+
+			vfsManager = new FermataVfsManager();
+			bitmapCache = new BitmapCache();
+			android.util.Log.i("FermataCrash", ">>> FermataApplication.onCreate() completed successfully");
+		} catch (Throwable e) {  // Catch ALL throwables, not just Exceptions
+			// Last resort - try to write crash to multiple locations
+			android.util.Log.e("FermataCrash", "=== FermataApplication.onCreate() CRASHED ===", e);
+			writeCrashLog("onCreate_crash.txt", "FermataApplication.onCreate() crashed", e);
+			throw new RuntimeException("Failed to initialize FermataApplication", e);
+		}
+	}
+
+	private void writeCrashLog(String filename, String message, Throwable e) {
+		// Log to logcat first (always works)
+		android.util.Log.e("FermataCrash", "=== " + message + " ===");
+		if (e != null) {
+			android.util.Log.e("FermataCrash", "Exception: " + e.getMessage(), e);
+		}
+
+		// Try to write to file (context should be available after super.onCreate() attempt)
+		try {
+			File logDir = new File(getFilesDir(), "CrashLogs");
+			logDir.mkdirs();
+			File logFile = new File(logDir, filename);
+			FileOutputStream fos = new FileOutputStream(logFile);
+			PrintWriter pw = new PrintWriter(fos);
+			pw.println("=== Fermata Crash ===");
+			pw.println(message);
+			pw.println("Time: " + new Date());
+			pw.println("Path: " + logFile.getAbsolutePath());
+			if (e != null) {
+				pw.println("\nStack trace:");
+				e.printStackTrace(pw);
+			}
+			pw.close();
+			fos.close();
+			android.util.Log.i("FermataCrash", "Log written to: " + logFile.getAbsolutePath());
+		} catch (Exception fileError) {
+			android.util.Log.e("FermataCrash", "Failed to write log file: " + fileError.getMessage());
+		}
+	}
+
+	private void testFileWrite() {
+		try {
+			// Use internal storage - always available, no permissions needed
+			File testDir = new File(getFilesDir(), "CrashLogs");
+			testDir.mkdirs();
+			File testFile = new File(testDir, "startup_test.txt");
+			FileOutputStream fos = new FileOutputStream(testFile);
+			PrintWriter pw = new PrintWriter(fos);
+			pw.println("=== Fermata Startup Test ===");
+			pw.println("App started successfully at: " + new Date());
+			pw.println("Path: " + testFile.getAbsolutePath());
+			pw.println("Package: " + getPackageName());
+			pw.println("Internal files dir: " + getFilesDir().getAbsolutePath());
+			pw.println("External files dir: " + (getExternalFilesDir(null) != null ? getExternalFilesDir(null).getAbsolutePath() : "NULL"));
+			pw.println("Cache dir: " + getCacheDir().getAbsolutePath());
+			pw.close();
+			fos.close();
+			Log.i("Test file written to: " + testFile.getAbsolutePath());
+		} catch (Exception e) {
+			Log.e(e, "Failed to write test file");
+		}
+	}
+
+	private void setupCrashLogger() {
+		final Thread.UncaughtExceptionHandler defaultHandler = Thread.getDefaultUncaughtExceptionHandler();
+		Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+			String crashInfo = null;
+			try {
+				// Try multiple locations - prioritize internal storage (always available)
+				File[] logDirs = new File[]{
+					new File(getFilesDir(), "CrashLogs"),
+					getCacheDir(),
+					getExternalFilesDir(null) != null ? new File(getExternalFilesDir(null), "CrashLogs") : null
+				};
+
+				String timestamp = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(new Date());
+
+				for (File logDir : logDirs) {
+					if (logDir == null) continue;
+					try {
+						if (!logDir.exists()) logDir.mkdirs();
+
+						File logFile = new File(logDir, "crash_" + timestamp + ".txt");
+						FileOutputStream fos = new FileOutputStream(logFile);
+						PrintWriter pw = new PrintWriter(fos);
+
+						pw.println("=== Fermata Crash Log ===");
+						pw.println("Time: " + timestamp);
+						pw.println("Thread: " + thread.getName());
+						pw.println("Build: " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")");
+						pw.println("Log location: " + logFile.getAbsolutePath());
+						pw.println("\n--- Stack Trace ---\n");
+
+						StringWriter sw = new StringWriter();
+						throwable.printStackTrace(new PrintWriter(sw));
+						crashInfo = sw.toString();
+						pw.println(crashInfo);
+
+						pw.flush();
+						pw.close();
+						fos.close();
+
+						Log.i("Crash log saved to: " + logFile.getAbsolutePath());
+						break; // Success, no need to try other locations
+					} catch (Exception ignored) {
+						// Try next location
+					}
+				}
+			} catch (Exception e) {
+				Log.e(e, "Failed to write crash log");
+			}
+
+			// Always log to logcat
+			if (crashInfo != null) {
+				Log.e("CRASH: " + crashInfo);
+			}
+
+			if (defaultHandler != null) {
+				defaultHandler.uncaughtException(thread, throwable);
+			}
+		});
 	}
 
 	public boolean isConnectedToAuto() {
