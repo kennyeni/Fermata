@@ -208,7 +208,7 @@ public class LauncherActivity extends AppCompatActivity {
 						apps.add(AppInfo.EXIT);
 						break;
 					}
-				if (userManager == null || appProfileInfo.userHandle == null) continue;
+					if (userManager == null || appProfileInfo.userHandle == null) continue;
 					long infoSerialNumber = userManager.getSerialNumberForUser(appProfileInfo.userHandle);
 					if (pkg.equals(info.activityInfo.packageName) && activityName.equals(info.activityInfo.name) &&
 							(userSerialNumber == -1L || userSerialNumber == infoSerialNumber)) {
@@ -225,8 +225,8 @@ public class LauncherActivity extends AppCompatActivity {
 
 		private static class AppProfileInfo {
 			final ResolveInfo info;
-				if (userManager == null || appProfileInfo.userHandle == null) continue;
-				long infoSerialNumber = userManager.getSerialNumberForUser(appProfileInfo.userHandle);
+			final UserHandle userHandle;
+
 			AppProfileInfo(ResolveInfo info, UserHandle userHandle) {
 				this.info = info;
 				this.userHandle = userHandle;
