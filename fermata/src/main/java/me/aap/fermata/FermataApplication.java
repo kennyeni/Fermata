@@ -61,33 +61,32 @@ public class FermataApplication extends NetSplitCompatApp {
 	}
 
 	private void writeCrashLog(String filename, String message, Exception e) {
-		// Try multiple locations without depending on context
-		String[] paths = new String[] {
-			"/sdcard/FermataCrash/" + filename,
-			"/sdcard/Download/FermataCrash/" + filename,
-			"/data/local/tmp/" + filename
-		};
+		// Log to logcat first (always works)
+		android.util.Log.e("FermataCrash", "=== " + message + " ===");
+		if (e != null) {
+			android.util.Log.e("FermataCrash", "Exception: " + e.getMessage(), e);
+		}
 
-		for (String path : paths) {
-			try {
-				File file = new File(path);
-				file.getParentFile().mkdirs();
-				FileOutputStream fos = new FileOutputStream(file);
-				PrintWriter pw = new PrintWriter(fos);
-				pw.println("=== Fermata Crash ===");
-				pw.println(message);
-				pw.println("Time: " + new Date());
-				pw.println("Path: " + path);
-				if (e != null) {
-					pw.println("\nStack trace:");
-					e.printStackTrace(pw);
-				}
-				pw.close();
-				fos.close();
-				return; // Success, exit
-			} catch (Exception ignored) {
-				// Try next location
+		// Try to write to file (context should be available after super.onCreate() attempt)
+		try {
+			File logDir = new File(getFilesDir(), "CrashLogs");
+			logDir.mkdirs();
+			File logFile = new File(logDir, filename);
+			FileOutputStream fos = new FileOutputStream(logFile);
+			PrintWriter pw = new PrintWriter(fos);
+			pw.println("=== Fermata Crash ===");
+			pw.println(message);
+			pw.println("Time: " + new Date());
+			pw.println("Path: " + logFile.getAbsolutePath());
+			if (e != null) {
+				pw.println("\nStack trace:");
+				e.printStackTrace(pw);
 			}
+			pw.close();
+			fos.close();
+			android.util.Log.i("FermataCrash", "Log written to: " + logFile.getAbsolutePath());
+		} catch (Exception fileError) {
+			android.util.Log.e("FermataCrash", "Failed to write log file: " + fileError.getMessage());
 		}
 	}
 
