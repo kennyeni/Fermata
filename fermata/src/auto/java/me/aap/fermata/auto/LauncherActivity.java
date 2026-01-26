@@ -292,7 +292,7 @@ public class LauncherActivity extends AppCompatActivity {
 			MainActivityPrefs.get().applyStringArrayPref(AA_LAUNCHER_APPS,
 					CollectionUtils.mapToArray(apps, i -> {
 						var result = i.pkg + '#' + i.name;
-						if (i.userHandle != null) {
+						if (i.userHandle != null && userManager != null) {
 							var serialNumber = userManager.getSerialNumberForUser(i.userHandle);
 							result += '#' + serialNumber;
 						}
