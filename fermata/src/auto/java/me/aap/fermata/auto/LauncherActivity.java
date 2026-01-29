@@ -72,7 +72,7 @@ public class LauncherActivity extends AppCompatActivity {
 	private static final String PACKAGE_NAME = "me.aap.fermata";
 	private static final Pref<Supplier<String[]>> AA_LAUNCHER_APPS = Pref.sa("AA_LAUNCHER_APPS",
 			() -> new String[]{PACKAGE_NAME, "com.android.chrome",
-					"com.google.android.gm", "com.google.android.apps.maps", "com.google.android.youtube"});
+				"com.google.android.gm", "com.google.android.apps.maps", "com.google.android.youtube"});
 	private static LauncherActivity activeInstance;
 
 	static LauncherActivity getActiveInstance() {
@@ -184,12 +184,27 @@ public class LauncherActivity extends AppCompatActivity {
 			return icon;
 		}
 
+		private Drawable getBadgedIcon(Drawable icon, UserHandle userHandle) {
+			if (userHandle == null) return icon;
+			try {
+				return getContext().getPackageManager().getUserBadgedIcon(icon, userHandle);
+			} catch (Exception e) {
+				return icon;
+			}
+		}
+
 		private List<AppInfo> loadAppList() {
 			var selectedApps = MainActivityPrefs.get().getStringArrayPref(AA_LAUNCHER_APPS);
+			android.util.Log.d("LauncherActivity", "loadAppList: Loading " + selectedApps.length + " saved apps");
+			for (var app : selectedApps) {
+				android.util.Log.d("LauncherActivity", "loadAppList: Saved app entry: " + app);
+			}
 			var apps = new ArrayList<AppInfo>(selectedApps.length + 1);
 			var pm = getContext().getPackageManager();
 			var userManager = (UserManager) getContext().getSystemService(Context.USER_SERVICE);
+			android.util.Log.d("LauncherActivity", "loadAppList: userManager is " + (userManager == null ? "NULL" : "available"));
 			var allApps = loadAllAppList(pm);
+			android.util.Log.d("LauncherActivity", "loadAppList: Found " + allApps.size() + " available apps");
 			var addApp = AppInfo.ADD.pkg + '#' + AppInfo.ADD.name;
 			var exitApp = AppInfo.EXIT.pkg + '#' + AppInfo.EXIT.name;
 
@@ -209,18 +224,23 @@ public class LauncherActivity extends AppCompatActivity {
 						apps.add(AppInfo.EXIT);
 						break;
 					}
-					if (userManager == null || appProfileInfo.userHandle == null) continue;
-					long infoSerialNumber = userManager.getSerialNumberForUser(appProfileInfo.userHandle);
+					long infoSerialNumber = -1L;
+					if (userManager != null && appProfileInfo.userHandle != null) {
+						infoSerialNumber = userManager.getSerialNumberForUser(appProfileInfo.userHandle);
+					}
 					if (pkg.equals(info.activityInfo.packageName) && activityName.equals(info.activityInfo.name) &&
-							(userSerialNumber == -1L || userSerialNumber == infoSerialNumber)) {
+							(userSerialNumber == -1L || infoSerialNumber == -1L || userSerialNumber == infoSerialNumber)) {
+						android.util.Log.d("LauncherActivity", "loadAppList: Matched! pkg=" + pkg + " activity=" + activityName + " userSerial=" + userSerialNumber + " infoSerial=" + infoSerialNumber);
+						var icon = getBadgedIcon(info.loadIcon(pm), appProfileInfo.userHandle);
 						apps.add(new AppInfo(info.activityInfo.packageName, info.activityInfo.name,
-								info.loadLabel(pm).toString(), info.loadIcon(pm), appProfileInfo.userHandle));
+								info.loadLabel(pm).toString(), icon, appProfileInfo.userHandle));
 						break;
 					}
 				}
 			}
 
 			if (addApp != null) apps.add(AppInfo.ADD);
+			android.util.Log.d("LauncherActivity", "loadAppList: Final app list size: " + apps.size());
 			return apps;
 		}
 
@@ -289,15 +309,20 @@ public class LauncherActivity extends AppCompatActivity {
 
 		private void saveApps() {
 			var userManager = (UserManager) getContext().getSystemService(Context.USER_SERVICE);
-			MainActivityPrefs.get().applyStringArrayPref(AA_LAUNCHER_APPS,
-					CollectionUtils.mapToArray(apps, i -> {
-						var result = i.pkg + '#' + i.name;
-						if (i.userHandle != null && userManager != null) {
-							var serialNumber = userManager.getSerialNumberForUser(i.userHandle);
-							result += '#' + serialNumber;
-						}
-						return result;
-					}, String[]::new));
+			android.util.Log.d("LauncherActivity", "saveApps: Saving " + apps.size() + " apps, userManager is " + (userManager == null ? "NULL" : "available"));
+			var savedApps = CollectionUtils.mapToArray(apps, i -> {
+				android.util.Log.d("LauncherActivity", "saveApps: Processing pkg=" + i.pkg + " name=" + i.name + " userHandle=" + i.userHandle);
+				var result = i.pkg + '#' + i.name;
+				if (i.userHandle != null && userManager != null) {
+					var serialNumber = userManager.getSerialNumberForUser(i.userHandle);
+					android.util.Log.d("LauncherActivity", "saveApps: Got serialNumber=" + serialNumber + " for userHandle=" + i.userHandle);
+					result += "#" + serialNumber;
+				}
+				android.util.Log.d("LauncherActivity", "saveApps: Final result: " + result);
+				return result;
+			}, String[]::new);
+			MainActivityPrefs.get().applyStringArrayPref(AA_LAUNCHER_APPS, savedApps);
+			android.util.Log.d("LauncherActivity", "saveApps: Complete");
 		}
 
 		private void configure(Context ctx, Configuration cfg) {
@@ -363,7 +388,7 @@ public class LauncherActivity extends AppCompatActivity {
 			}
 
 			private SelectAppInfo(PackageManager pm, ResolveInfo info, String pkg, String name,
-														String label, Drawable icon, UserHandle userHandle) {
+					String label, Drawable icon, UserHandle userHandle) {
 				super(pkg, name, label, icon, userHandle);
 				this.pm = pm;
 				this.info = info;
@@ -371,10 +396,17 @@ public class LauncherActivity extends AppCompatActivity {
 
 			@Override
 			public Drawable icon() {
-				if (icon == null) icon = info.loadIcon(pm);
+				if (icon == null) {
+					var baseIcon = info.loadIcon(pm);
+					try {
+						icon = pm.getUserBadgedIcon(baseIcon, userHandle);
+					} catch (Exception e) {
+						icon = baseIcon;
+					}
+				}
 				return icon;
 			}
-
+			
 			@Override
 			public int compareTo(SelectAppInfo o) {
 				return label.compareTo(o.label);
@@ -434,8 +466,9 @@ public class LauncherActivity extends AppCompatActivity {
 							if (checkedIcon == null) checkedIcon = loadIcon(me.aap.utils.R.drawable.check_box);
 							icon = checkedIcon;
 						} else {
-							if (uncheckedIcon == null)
+							if (uncheckedIcon == null) {
 								uncheckedIcon = loadIcon(me.aap.utils.R.drawable.check_box_blank);
+							}
 							icon = uncheckedIcon;
 						}
 						text.setCompoundDrawablesWithIntrinsicBounds(icon, null, null, null);
@@ -476,7 +509,9 @@ public class LauncherActivity extends AppCompatActivity {
 				} else if (appInfo.equals(AppInfo.ADD)) {
 					var pm = getContext().getPackageManager();
 					var allApps = loadAllAppList(pm);
-					if (exitIcon == null) exitIcon = loadIcon(R.drawable.shutdown);
+					if (exitIcon == null) {
+						exitIcon = loadIcon(R.drawable.shutdown);
+					}
 					selectApps = new SelectAppInfo[allApps.size() + 1];
 					selectApps[0] = new SelectAppInfo(null, null, AppInfo.EXIT.pkg, AppInfo.EXIT.name,
 							getContext().getString(R.string.exit), exitIcon, null);
@@ -485,7 +520,9 @@ public class LauncherActivity extends AppCompatActivity {
 						selectApps[i] = new SelectAppInfo(pm, appProfileInfo.info, appProfileInfo.userHandle);
 					}
 					Arrays.sort(selectApps, 1, selectApps.length);
-					for (var app : selectApps) app.selected = AppListView.this.apps.contains(app);
+					for (var app : selectApps) {
+						app.selected = AppListView.this.apps.contains(app);
+					}
 					Objects.requireNonNull(getAdapter()).notifyDataSetChanged();
 				} else if (appInfo.equals(AppInfo.BACK)) {
 					selectApps();
