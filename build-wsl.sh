@@ -20,4 +20,4 @@ fi
 export JAVA_HOME
 export PATH=/home/kennyeni/android-sdk/cmake/4.1.2/bin:$PATH
 
-./gradlew assembleAutoDebug --build-cache -Psdk.dir=/home/kennyeni/Android
+./gradlew assembleAutoDebug --build-cache
