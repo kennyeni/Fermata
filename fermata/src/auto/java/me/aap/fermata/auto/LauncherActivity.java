@@ -249,12 +249,12 @@ public class LauncherActivity extends AppCompatActivity {
 
 			if (exitApp != null) {
 				var idx = apps.size();
-				if (apps.get(idx - 1).equals(AppInfo.ADD)) idx -= 1;
+				if (idx > 0 && apps.get(idx - 1).equals(AppInfo.ADD)) idx -= 1;
 				apps.add(idx, AppInfo.EXIT);
 			}
 			if (notificationsApp != null) {
 				var idx = apps.size();
-				if (apps.get(idx - 1).equals(AppInfo.ADD)) idx -= 1;
+				if (idx > 0 && apps.get(idx - 1).equals(AppInfo.ADD)) idx -= 1;
 				apps.add(idx, AppInfo.NOTIFICATIONS);
 			}
 			if (addApp != null) apps.add(AppInfo.ADD);
