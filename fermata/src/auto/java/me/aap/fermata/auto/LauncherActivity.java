@@ -144,6 +144,7 @@ public class LauncherActivity extends AppCompatActivity {
 		private final Animation animation;
 		private final Drawable addIcon;
 		private Drawable exitIcon;
+		private Drawable notificationsIcon;
 		private Drawable backIcon;
 		private Drawable checkedIcon;
 		private Drawable uncheckedIcon;
@@ -207,6 +208,7 @@ public class LauncherActivity extends AppCompatActivity {
 			android.util.Log.d("LauncherActivity", "loadAppList: Found " + allApps.size() + " available apps");
 			var addApp = AppInfo.ADD.pkg + '#' + AppInfo.ADD.name;
 			var exitApp = AppInfo.EXIT.pkg + '#' + AppInfo.EXIT.name;
+			var notificationsApp = AppInfo.NOTIFICATIONS.pkg + '#' + AppInfo.NOTIFICATIONS.name;
 
 			for (var app : selectedApps) {
 				var parts = app.split("#");
@@ -222,6 +224,12 @@ public class LauncherActivity extends AppCompatActivity {
 					}
 					if (app.equals(exitApp)) {
 						apps.add(AppInfo.EXIT);
+						exitApp = null;
+						break;
+					}
+					if (app.equals(notificationsApp)) {
+						apps.add(AppInfo.NOTIFICATIONS);
+						notificationsApp = null;
 						break;
 					}
 					long infoSerialNumber = -1L;
@@ -239,6 +247,16 @@ public class LauncherActivity extends AppCompatActivity {
 				}
 			}
 
+			if (exitApp != null) {
+				var idx = apps.size();
+				if (idx > 0 && apps.get(idx - 1).equals(AppInfo.ADD)) idx -= 1;
+				apps.add(idx, AppInfo.EXIT);
+			}
+			if (notificationsApp != null) {
+				var idx = apps.size();
+				if (idx > 0 && apps.get(idx - 1).equals(AppInfo.ADD)) idx -= 1;
+				apps.add(idx, AppInfo.NOTIFICATIONS);
+			}
 			if (addApp != null) apps.add(AppInfo.ADD);
 			android.util.Log.d("LauncherActivity", "loadAppList: Final app list size: " + apps.size());
 			return apps;
@@ -296,7 +314,13 @@ public class LauncherActivity extends AppCompatActivity {
 						var idx = apps.size();
 						if (apps.get(idx - 1).equals(AppInfo.ADD)) idx -= 1;
 						var ai = new AppInfo(app.pkg, app.name, app.label, app.icon(), app.userHandle);
-						apps.add(idx, AppInfo.EXIT.equals(ai) ? AppInfo.EXIT : ai);
+						if (AppInfo.EXIT.equals(ai)) {
+							apps.add(idx, AppInfo.EXIT);
+						} else if (AppInfo.NOTIFICATIONS.equals(ai)) {
+							apps.add(idx, AppInfo.NOTIFICATIONS);
+						} else {
+							apps.add(idx, ai);
+						}
 					}
 				} else {
 					apps.remove(app);
@@ -344,6 +368,8 @@ public class LauncherActivity extends AppCompatActivity {
 					new AppInfo(PACKAGE_NAME, "back", null, null, null);
 			private static final AppInfo EXIT =
 					new AppInfo(PACKAGE_NAME, "exit", null, null, null);
+			private static final AppInfo NOTIFICATIONS =
+					new AppInfo(PACKAGE_NAME, "notifications", null, null, null);
 			final String pkg;
 			final String name;
 			final String label;
@@ -456,6 +482,10 @@ public class LauncherActivity extends AppCompatActivity {
 						if (exitIcon == null) exitIcon = loadIcon(R.drawable.shutdown);
 						icon.setImageDrawable(exitIcon);
 						text.setText(getContext().getString(R.string.exit));
+					} else if (appInfo == AppInfo.NOTIFICATIONS) {
+						if (notificationsIcon == null) notificationsIcon = loadIcon(R.drawable.notifications);
+						icon.setImageDrawable(notificationsIcon);
+						text.setText(getContext().getString(R.string.notifications));
 					} else {
 						icon.setImageDrawable(appInfo.icon());
 						text.setText(appInfo.label);
@@ -506,20 +536,44 @@ public class LauncherActivity extends AppCompatActivity {
 
 				if (appInfo.equals(AppInfo.EXIT)) {
 					MirrorDisplay.close();
+				} else if (appInfo.equals(AppInfo.NOTIFICATIONS)) {
+					try {
+						var intent = new Intent(Intent.ACTION_MAIN);
+						intent.setClassName("com.android.systemui", "com.android.systemui.statusbar.phone.StatusBarPanelActivity");
+						intent.setFlags(FLAG_ACTIVITY_NEW_TASK);
+						getContext().startActivity(intent);
+					} catch (Exception e) {
+						// Fallback: use the expand notifications command
+						try {
+							var statusBarService = getContext().getSystemService("statusbar");
+							if (statusBarService != null) {
+								var statusBarClass = Class.forName("android.app.StatusBarManager");
+								var expandMethod = statusBarClass.getMethod("expandNotificationsPanel");
+								expandMethod.invoke(statusBarService);
+							}
+						} catch (Exception err) {
+							Toast.makeText(getContext(), "Cannot open notifications: " + err.getLocalizedMessage(), Toast.LENGTH_LONG).show();
+						}
+					}
 				} else if (appInfo.equals(AppInfo.ADD)) {
 					var pm = getContext().getPackageManager();
 					var allApps = loadAllAppList(pm);
 					if (exitIcon == null) {
 						exitIcon = loadIcon(R.drawable.shutdown);
 					}
-					selectApps = new SelectAppInfo[allApps.size() + 1];
+					if (notificationsIcon == null) {
+						notificationsIcon = loadIcon(R.drawable.notifications);
+					}
+					selectApps = new SelectAppInfo[allApps.size() + 2];
 					selectApps[0] = new SelectAppInfo(null, null, AppInfo.EXIT.pkg, AppInfo.EXIT.name,
 							getContext().getString(R.string.exit), exitIcon, null);
-					for (int i = 1; i < selectApps.length; i++) {
-						var appProfileInfo = allApps.get(i - 1);
+					selectApps[1] = new SelectAppInfo(null, null, AppInfo.NOTIFICATIONS.pkg, AppInfo.NOTIFICATIONS.name,
+							getContext().getString(R.string.notifications), notificationsIcon, null);
+					for (int i = 2; i < selectApps.length; i++) {
+						var appProfileInfo = allApps.get(i - 2);
 						selectApps[i] = new SelectAppInfo(pm, appProfileInfo.info, appProfileInfo.userHandle);
 					}
-					Arrays.sort(selectApps, 1, selectApps.length);
+					Arrays.sort(selectApps, 2, selectApps.length);
 					for (var app : selectApps) {
 						app.selected = AppListView.this.apps.contains(app);
 					}
