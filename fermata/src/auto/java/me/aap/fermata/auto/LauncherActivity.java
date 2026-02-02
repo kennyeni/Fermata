@@ -22,6 +22,7 @@ import android.content.pm.LauncherApps;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
+import android.os.Build;
 import android.os.UserHandle;
 import android.os.UserManager;
 import android.graphics.PorterDuff;
@@ -537,23 +538,30 @@ public class LauncherActivity extends AppCompatActivity {
 				if (appInfo.equals(AppInfo.EXIT)) {
 					MirrorDisplay.close();
 				} else if (appInfo.equals(AppInfo.NOTIFICATIONS)) {
+					// API level check - expandNotificationsPanel requires API 17+
+					if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1) {
+						Toast.makeText(getContext(), "Notifications not supported on this Android version", Toast.LENGTH_LONG).show();
+						return;
+					}
+
+					var statusBarService = getContext().getSystemService(Context.STATUS_BAR_SERVICE);
+					if (statusBarService == null) {
+						android.util.Log.w("LauncherActivity", "StatusBarManager not available");
+						Toast.makeText(getContext(), "Cannot open notifications. Please use system controls.", Toast.LENGTH_LONG).show();
+						return;
+					}
+
 					try {
-						var intent = new Intent(Intent.ACTION_MAIN);
-						intent.setClassName("com.android.systemui", "com.android.systemui.statusbar.phone.StatusBarPanelActivity");
-						intent.setFlags(FLAG_ACTIVITY_NEW_TASK);
-						getContext().startActivity(intent);
-					} catch (Exception e) {
-						// Fallback: use the expand notifications command
-						try {
-							var statusBarService = getContext().getSystemService("statusbar");
-							if (statusBarService != null) {
-								var statusBarClass = Class.forName("android.app.StatusBarManager");
-								var expandMethod = statusBarClass.getMethod("expandNotificationsPanel");
-								expandMethod.invoke(statusBarService);
-							}
-						} catch (Exception err) {
-							Toast.makeText(getContext(), "Cannot open notifications: " + err.getLocalizedMessage(), Toast.LENGTH_LONG).show();
+						var method = statusBarService.getClass().getMethod("expandNotificationsPanel");
+						if (method != null) {
+							method.invoke(statusBarService);
 						}
+					} catch (SecurityException e) {
+						android.util.Log.e("LauncherActivity", "SecurityException opening notifications", e);
+						Toast.makeText(getContext(), "Permission denied to open notifications", Toast.LENGTH_LONG).show();
+					} catch (Exception e) {
+						android.util.Log.e("LauncherActivity", "Error opening notifications", e);
+						Toast.makeText(getContext(), "Cannot open notifications. Please use system controls.", Toast.LENGTH_LONG).show();
 					}
 				} else if (appInfo.equals(AppInfo.ADD)) {
 					var pm = getContext().getPackageManager();
